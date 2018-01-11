@@ -17,8 +17,10 @@ namespace FeederDemoCS
         bool res;
         int X, Y, Z, ZR, XR;
         double cThr, cPitch, cRoll, cYaw, cConv;
+        double centerThrottle = 0.5;
         double count = 0;
         double random_gen = 0;
+        double conv_mul = 1.0;
         ERAState state;
         long maxval = 0;
         bool allownoise = false;
@@ -56,8 +58,12 @@ namespace FeederDemoCS
             cConv = 0;
             state = ERAState.Disarmed;
             label2.Text = "НЕ ВЗВЕДЕНО";
+            joystick.SetBtn(false, id, 1);
         }
-
+        private void updateParameters()
+        {
+            centerThrottle = ((double)trackBar1.Value / (double)trackBar1.Maximum);
+        }
         private void setAxes()
         {
             // Set position of 4 axes
@@ -76,23 +82,25 @@ namespace FeederDemoCS
         {
             cPitch = cRoll = 0.5;
             cThr = 0;
-            cYaw = 0;
-            count = 3.0f;
+            cYaw = 0.5;
+            joystick.SetBtn(true, id, 1);
+            count = 1.0f;
             state = ERAState.Arming;
         }
         private void ArmReady()
         {
             cYaw = 0.5;
             state = ERAState.ThrottleUp;
+            joystick.SetBtn(false, id, 1);
             allownoise = true;
         }
         private void StartupThrottle()
         {
-            cThr = cThr + (0.5 - cThr) / 2.0 * ((double)timer1.Interval) / 1000.0;
-            if (Math.Abs(cThr-0.5)<0.01)
+            cThr = cThr + (centerThrottle - cThr) / 2.0 * ((double)timer1.Interval) / 1000.0;
+            if (Math.Abs(cThr - centerThrottle) < 0.01)
             {
                 count = 0;
-                cThr = 0.5;
+                cThr = centerThrottle;
                 state = ERAState.Idle;
             }
         }
@@ -101,9 +109,9 @@ namespace FeederDemoCS
             count += ((double)timer1.Interval) / 1000.0;
             cPitch -= (cPitch - 0.5) * 0.05;
             cRoll -= (cRoll - 0.5) * 0.05;
-            cThr -= (cThr - 0.5) * 0.05;
+            cThr -= (cThr - centerThrottle * conv_mul) * 0.05;
             cYaw -= (cYaw - 0.5) * 0.05;
-            if (count > 1.0f)
+            if (count > 0.4f)
             {
                 count = 0;
                 Random r = new Random();
@@ -111,6 +119,8 @@ namespace FeederDemoCS
                 switch(rnd_num)
                 {
                     case 0:
+                        state = ERAState.PitchDown;
+                        break;
                     case 8:
                         state = ERAState.Conversion;
                         break;
@@ -151,7 +161,7 @@ namespace FeederDemoCS
 
             cPitch -= (cPitch - 0.5) * 0.05;
             cRoll -= (cRoll - 0.5) * 0.05;
-            cThr -= (cThr - 0.5) * 0.05;
+            cThr -= (cThr - centerThrottle * conv_mul) * 0.05;
             cYaw -= (cYaw - 0.5) * 0.05;
 
             switch (state)
@@ -174,11 +184,13 @@ namespace FeederDemoCS
                     break;
                 case ERAState.YawRight:
                     label2.Text = "РЫСК+";
-                    cYaw = 0.5 + wf * 0.25;
+                    if (!checkBox1.Checked)
+                        cYaw = 0.5 + wf * 0.25;
                     break;
                 case ERAState.YawLeft:
                     label2.Text = "РЫСК-";
-                    cYaw = 0.5 - wf * 0.25;
+                    if (!checkBox1.Checked)
+                        cYaw = 0.5 - wf * 0.25;
                     break;
                 default:
                     break;
@@ -186,7 +198,7 @@ namespace FeederDemoCS
             if (count>1.5)
             {
                 cPitch = cRoll = cYaw = 0.5;
-                cThr = 0.5;
+                cThr = centerThrottle * conv_mul;
                 state = ERAState.Idle;
             }
         }
@@ -196,18 +208,23 @@ namespace FeederDemoCS
             if (copter)
             {
                 cConv = count;
+                
             }
             else 
             {
                 cConv = 1 - count;
             }
-            
+            conv_mul = 1 - cConv * 0.3;
             if (count > 1)
             {
                 state = ERAState.Idle;
                 copter = !copter;
                 count = 0;
             }
+        }
+        private void addLog()
+        {
+           
         }
         private void computeNextValues()
         {
@@ -221,9 +238,11 @@ namespace FeederDemoCS
                 case ERAState.Disarmed:
                     Arm();
                     label2.Text = "НЕ ВЗВЕДЕНО";
+                    addLog();
                     break;
                 case ERAState.Arming:
                     label2.Text = "ВЗВЕДЕНИЕ";
+                    addLog();
                     count -= ((double)timer1.Interval) / 1000.0;
                     if (count<0)
                     {
@@ -233,14 +252,17 @@ namespace FeederDemoCS
                     break;
                 case ERAState.ThrottleUp:
                     label2.Text = "ПУСК";
+                    addLog();
                     StartupThrottle();
                     break;
                 case ERAState.Idle:
                     label2.Text = "БЕЗДЕЙСТВИЕ";
+                    addLog();
                     WhatsNext();
                     break;
                 case ERAState.Conversion:
                     label2.Text = "КОНВЕРСИЯ";
+                    addLog();
                     performConversion();
                     break;
                 case ERAState.PitchUp:
@@ -250,6 +272,7 @@ namespace FeederDemoCS
                 case ERAState.YawLeft:
                 case ERAState.YawRight:
                     processStickMovement();
+                    addLog();
                     break;
                 default:
                     cPitch = cRoll = cYaw = 0.5;
@@ -261,13 +284,14 @@ namespace FeederDemoCS
         private double generateGaussNoise()
         {
             double sum=0;
+            double noiseLevel = 0.02 * ((double)trackBar2.Value / (double)trackBar2.Maximum);
             for (int i=0;i!=100;i++)
             {
                 Random r = new Random();
-                sum+=r.NextDouble()*0.02;
+                sum += r.NextDouble() * noiseLevel;
             }
             sum/=100;
-            return sum-0.01;
+            return sum - noiseLevel/2;
         }
         private void addNoise()
         {
@@ -283,6 +307,7 @@ namespace FeederDemoCS
         private void processState()
         {
             setAxes();
+            updateParameters();
             addNoise();
             computeNextValues();
         }
@@ -310,6 +335,22 @@ namespace FeederDemoCS
         private void FeederForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             button2_Click(this, e);
+        }
+
+        private void trackBar1_Scroll(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label2_TextChanged(object sender, EventArgs e)
+        {
+            DateTime thisDay = DateTime.Now;
+            textBox1.Text += thisDay.ToString() + " СТАТУС:" + label2.Text + Environment.NewLine;
+        }
+
+        private void checkBox1_CheckedChanged(object sender, EventArgs e)
+        {
+            cYaw = 0.5;
         }
     }
 }
