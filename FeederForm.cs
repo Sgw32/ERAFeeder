@@ -17,9 +17,11 @@ namespace FeederDemoCS
         bool res;
         int X, Y, Z, ZR, XR;
         double cThr, cPitch, cRoll, cYaw, cConv;
+        double desThr, desPitch, desRoll, desYaw;
         double centerThrottle = 0.5;
         double count = 0;
         double random_gen = 0;
+        Random r;
         double conv_mul = 1.0;
         ERAState state;
         long maxval = 0;
@@ -28,8 +30,8 @@ namespace FeederDemoCS
         int DiscPovNumber;
         int ContPovNumber;
 
-        enum ERAState { Disarmed, Arming, ThrottleUp, Conversion, Idle, PitchUp, PitchDown, 
-            RollDown, RollUp, YawLeft,YawRight }; 
+        enum ERAState { Disarmed, Arming, ThrottleUp, Conversion, Idle, PitchUp, PitchDown,
+        RollDown, RollUp, YawLeft, YawRight, StopProcess}; 
         public FeederForm()
         {
             InitializeComponent();
@@ -43,6 +45,7 @@ namespace FeederDemoCS
 
         private void FeederForm_Load(object sender, EventArgs e)
         {
+            r = new Random(DateTime.Now.Millisecond);
             DiscPovNumber = joystick.GetVJDDiscPovNumber(id);
             ContPovNumber = joystick.GetVJDContPovNumber(id);
             joystick.GetVJDAxisMax(id, HID_USAGES.HID_USAGE_X, ref maxval);
@@ -54,7 +57,9 @@ namespace FeederDemoCS
             XR = 60;
             ZR = 80;
             cPitch = cRoll = cYaw = 0.5;
+            desPitch = desRoll = desYaw = 0.5;
             cThr = 0;
+            desThr = 0;
             cConv = 0;
             state = ERAState.Disarmed;
             label2.Text = "НЕ ВЗВЕДЕНО";
@@ -101,39 +106,56 @@ namespace FeederDemoCS
             {
                 count = 0;
                 cThr = centerThrottle;
+                desThr = centerThrottle * conv_mul;
                 state = ERAState.Idle;
             }
+        }
+        private void makeNewRandomSticks()
+        {
+            desPitch = 0.5 + generateGaussNoise(3*((double)trackBar2.Value / (double)trackBar2.Maximum), 10);
+            desRoll = 0.5 + generateGaussNoise(3 * ((double)trackBar2.Value / (double)trackBar2.Maximum), 10);
+            if (!checkBox1.Checked)
+                desYaw = 0.5 + generateGaussNoise(3 * ((double)trackBar2.Value / (double)trackBar2.Maximum) * 0.5, 30);
+            else
+                desYaw = 0.5;
+            desThr = centerThrottle * conv_mul + generateGaussNoise(((double)trackBar2.Value / (double)trackBar2.Maximum) * 0.1, 10);
+            label2.Text="ОБН "+desPitch.ToString()+" "+desRoll.ToString()+" "+
+               desThr.ToString()+" "+desYaw.ToString();
         }
         private void WhatsNext()
         {
             count += ((double)timer1.Interval) / 1000.0;
-            cPitch -= (cPitch - 0.5) * 0.05;
-            cRoll -= (cRoll - 0.5) * 0.05;
-            cThr -= (cThr - centerThrottle * conv_mul) * 0.05;
-            cYaw -= (cYaw - 0.5) * 0.05;
-            if (count > 0.4f)
+            cPitch -= (cPitch - desPitch) * 0.05;
+            cRoll -= (cRoll - desRoll) * 0.05;
+            cThr -= (cThr - desThr) * 0.05;
+            cYaw -= (cYaw - desYaw) * 0.05;
+            if (count > 3.0f)
             {
                 count = 0;
-                Random r = new Random();
                 int rnd_num = (int)Math.Floor(r.NextDouble()*10);
                 switch(rnd_num)
                 {
-                    case 0:
-                        state = ERAState.PitchDown;
-                        break;
                     case 8:
                         state = ERAState.Conversion;
                         break;
-                    case 9:
-                        state = ERAState.Idle;
-                        break;
                     default:
-                        state = ERAState.Idle + rnd_num-1;
+                        state = ERAState.Idle;
+                        makeNewRandomSticks();
                         break;
                 }
             }
         }
-
+        private double generateGaussNoise()
+        {
+            double sum=0;
+            double noiseLevel = 0.02 * 0.5;//((double)trackBar2.Value / (double)trackBar2.Maximum);
+            for (int i=0;i!=100;i++)
+            {
+                sum += r.NextDouble() * noiseLevel;
+            }
+            sum/=100;
+            return sum - noiseLevel/2;
+        }
         private double generateStickWaveform(double time)
         {
             if (time < 0.2)
@@ -265,6 +287,14 @@ namespace FeederDemoCS
                     addLog();
                     performConversion();
                     break;
+                case ERAState.StopProcess:
+                    label2.Text = "СТОП ГОТОВ";
+                    cPitch = cRoll = cYaw = 0.5;
+                    desYaw = desPitch = desRoll = 0.5;
+                    desThr = centerThrottle * conv_mul;
+                    cConv = 0;
+                    cThr = centerThrottle * conv_mul;
+                    break;
                 case ERAState.PitchUp:
                 case ERAState.PitchDown:
                 case ERAState.RollUp:
@@ -281,17 +311,16 @@ namespace FeederDemoCS
             }
         }
 
-        private double generateGaussNoise()
+        
+        private double generateGaussNoise(double noiseLevel,int it)
         {
-            double sum=0;
-            double noiseLevel = 0.02 * ((double)trackBar2.Value / (double)trackBar2.Maximum);
-            for (int i=0;i!=100;i++)
+            double sum = 0;
+            for (int i = 0; i != it; i++)
             {
-                Random r = new Random();
                 sum += r.NextDouble() * noiseLevel;
             }
-            sum/=100;
-            return sum - noiseLevel/2;
+            sum /= it;
+            return sum - noiseLevel / 2;
         }
         private void addNoise()
         {
@@ -330,6 +359,7 @@ namespace FeederDemoCS
             allownoise = false;
             state = ERAState.Disarmed;
             timer1.Enabled = false;
+            label2.Text = "СТОП";
         }
 
         private void FeederForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -351,6 +381,12 @@ namespace FeederDemoCS
         private void checkBox1_CheckedChanged(object sender, EventArgs e)
         {
             cYaw = 0.5;
+            desYaw = 0.5;
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            state = ERAState.StopProcess;
         }
     }
 }
