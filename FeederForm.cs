@@ -19,6 +19,8 @@ namespace FeederDemoCS
         double cThr, cPitch, cRoll, cYaw, cConv;
         double desThr, desPitch, desRoll, desYaw;
         double centerThrottle = 0.5;
+        double pParam;
+        double waitTime;
         double count = 0;
         double random_gen = 0;
         Random r;
@@ -64,6 +66,8 @@ namespace FeederDemoCS
             state = ERAState.Disarmed;
             label2.Text = "НЕ ВЗВЕДЕНО";
             joystick.SetBtn(false, id, 1);
+            pParam = 2;
+            waitTime = 1.5;
         }
         private void updateParameters()
         {
@@ -101,7 +105,7 @@ namespace FeederDemoCS
         }
         private void StartupThrottle()
         {
-            cThr = cThr + (centerThrottle - cThr) / 2.0 * ((double)timer1.Interval) / 1000.0;
+            cThr = cThr + pParam * (centerThrottle - cThr) / 2.0 * ((double)timer1.Interval) / 1000.0;
             if (Math.Abs(cThr - centerThrottle) < 0.01)
             {
                 count = 0;
@@ -125,11 +129,11 @@ namespace FeederDemoCS
         private void WhatsNext()
         {
             count += ((double)timer1.Interval) / 1000.0;
-            cPitch -= (cPitch - desPitch) * 0.05;
-            cRoll -= (cRoll - desRoll) * 0.05;
-            cThr -= (cThr - desThr) * 0.05;
-            cYaw -= (cYaw - desYaw) * 0.05;
-            if (count > 3.0f)
+            cPitch -= (cPitch - desPitch) * 0.05 * pParam;
+            cRoll -= (cRoll - desRoll) * 0.05 * pParam;
+            cThr -= (cThr - desThr) * 0.05 * pParam;
+            cYaw -= (cYaw - desYaw) * 0.05 * pParam;
+            if (count > waitTime)
             {
                 count = 0;
                 int rnd_num = (int)Math.Floor(r.NextDouble()*10);
@@ -387,6 +391,21 @@ namespace FeederDemoCS
         private void button3_Click(object sender, EventArgs e)
         {
             state = ERAState.StopProcess;
+        }
+
+        private void statusStrip1_ItemClicked(object sender, ToolStripItemClickedEventArgs e)
+        {
+
+        }
+
+        private void trackBar3_Scroll(object sender, EventArgs e)
+        {
+            pParam = 4 * (double)trackBar3.Value / (double)trackBar3.Maximum;
+        }
+
+        private void trackBar4_Scroll(object sender, EventArgs e)
+        {
+            waitTime = 0.2+2.8 * (double)trackBar4.Value / (double)trackBar4.Maximum;
         }
     }
 }
