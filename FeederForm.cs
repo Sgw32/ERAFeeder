@@ -22,7 +22,6 @@ namespace FeederDemoCS
         double pParam;
         double waitTime;
         double count = 0;
-        double random_gen = 0;
         Random r;
         double conv_mul = 1.0;
         ERAState state;
@@ -390,7 +389,12 @@ namespace FeederDemoCS
 
         private void button3_Click(object sender, EventArgs e)
         {
-            state = ERAState.StopProcess;
+            if (timer1.Enabled==true)
+            {
+                state = ERAState.StopProcess;
+                conv_mul = 1;
+                cThr = centerThrottle * conv_mul;
+            }
         }
 
         private void statusStrip1_ItemClicked(object sender, ToolStripItemClickedEventArgs e)
